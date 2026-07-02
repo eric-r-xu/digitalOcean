@@ -21,3 +21,7 @@ local_settings.py
 
 # Large/generated files
 city_dict.pkl
+
+# Old/reference project folders
+flask-gunicorn-nginx-wsgi/
+klaviyo-weather-app/
