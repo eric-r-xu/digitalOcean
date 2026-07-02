@@ -25,3 +25,5 @@ city_dict.pkl
 # Old/reference project folders
 flask-gunicorn-nginx-wsgi/
 klaviyo-weather-app/
+static/.DS_Store
+.DS_Store
