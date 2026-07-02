@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+myprojectenv/
+venv/
+env/
+.venv/
+
+# Logs / runtime
+nohup.out
+*.log
+*.sock
+
+# Local secrets/settings
+local_settings.py
+.env
+
+# Large/generated files
+city_dict.pkl
