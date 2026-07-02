@@ -1,0 +1,19 @@
+[Unit]
+Description=Gunicorn service for the digitalOcean Flask site
+After=network.target
+
+[Service]
+User=deploy
+Group=www-data
+WorkingDirectory=/srv/digitalOcean
+Environment="PATH=/srv/digitalOcean/.venv/bin"
+Environment="MYPROJECT_LOG_FILE=/srv/digitalOcean/logs/myproject.log"
+RuntimeDirectory=myproject
+RuntimeDirectoryMode=0755
+UMask=0007
+ExecStart=/srv/digitalOcean/.venv/bin/gunicorn --workers 3 --bind unix:/run/myproject/myproject.sock wsgi:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

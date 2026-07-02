@@ -1,35 +1,20 @@
-
-###### PACKAGES ######
-import sys
-import pandas as pd
 import logging
-import warnings
-import pymysql
-import ssl
-from flask_sqlalchemy import SQLAlchemy
-from pytz import timezone
-import pytz
-import time
-import dateutil.parser
-import flask
 import datetime
-from functools import wraps
-from flask import Flask, request, Response, render_template
+import os
+
+import pandas as pd
 import numpy as np
-import math
+from flask import Flask, request, render_template
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_mysqldb import MySQL
+from flask_sqlalchemy import SQLAlchemy
+from pytz import timezone
 from validate_email import validate_email
 from validate_email.updater import update_builtin_blacklist
 
-sys.path.append("/root/past-precipitation")
-import initialize_mysql_rain
-from initialize_mysql_rain import location_names
-from local_settings import *
-from initialize_mysql_rain import *
-sys.path.append("/root/klaviyo-weather-app")
-from local_settings import *
+from initialize_mysql_rain import lat_lon_dict, location_names
+from local_settings import MYSQL_AUTH, cityNameSet, city_name_to_id
 
 app = Flask(__name__)
 
@@ -41,6 +26,7 @@ app.config["MYSQL_DB"] = "klaviyo"
 
 mysql = MySQL(app)
 
+
 def timetz(*args):
     return datetime.datetime.now(tz).timetuple()
 
@@ -48,15 +34,23 @@ def timetz(*args):
 # logging datetime in PST
 tz = timezone("US/Pacific")
 logging.Formatter.converter = timetz
+log_file = os.environ.get("MYPROJECT_LOG_FILE", "logs/myproject.log")
+log_dir = os.path.dirname(log_file)
+if log_dir:
+    os.makedirs(log_dir, exist_ok=True)
 
 logging.basicConfig(
-    filename="/logs/myproject.log",
+    filename=log_file,
     format="%(asctime)s %(levelname)s: %(message)s",
     level=logging.INFO,
     datefmt=f"%Y-%m-%d %H:%M:%S ({tz})",
 )
 
-limiter = Limiter(app, default_limits=["500 per day", "50 per hour"])
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["500 per day", "50 per hour"],
+)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+mysqldb://%s:%s@%s/%s" % (
     MYSQL_AUTH["user"],
@@ -70,16 +64,18 @@ db = SQLAlchemy(app)
 
 @app.route("/")
 def base():
-    return render_template("index_new.html")
+    return render_template("index.html")
 
 
 @app.route("/research")
 def research():
     return render_template("research.html")
 
+
 @app.route("/old")
 def base2():
     return render_template("index_old.html")
+
 
 @app.route("/rain")
 def rain_app():
@@ -89,12 +85,14 @@ def rain_app():
 @app.route("/rain", methods=(["POST"]))
 def rain_gen_html_table():
     i_location_name = str(request.form["i_location_name"])
+    if i_location_name not in lat_lon_dict:
+        return "Please choose a location from the list"
+
     i_location_lat, i_location_lon = (
         lat_lon_dict[i_location_name]["lat"],
         lat_lon_dict[i_location_name]["lon"],
     )
-    try:
-        conn = db.engine.connect()
+    with db.engine.connect() as conn:
         df_pre = pd.read_sql_query(
             f"""
             SELECT  
@@ -132,8 +130,6 @@ def rain_gen_html_table():
         """,
             conn,
         )
-    finally:
-        conn.close()
     return render_template(
         "rain_service_result.html",
         tables=[df_pre.to_html(classes="data"), df.to_html(classes="data")],
@@ -142,7 +138,10 @@ def rain_gen_html_table():
 
 
 # update email blacklist
-update_builtin_blacklist(force=True, background=True)
+try:
+    update_builtin_blacklist(force=True, background=True)
+except Exception:
+    logging.exception("Unable to update email validation blacklist")
 
 
 @app.route("/klaviyo")
@@ -157,7 +156,7 @@ def klaviyo_weather_app_post():
         email_address=i_email, check_format=True, check_blacklist=True
     )
 
-    if is_valid == False:
+    if not is_valid:
         return str("Unable to validate email address: %s" % i_email)
 
     i_city_name = str(request.form["i_city"])
@@ -169,7 +168,8 @@ def klaviyo_weather_app_post():
     try:
         logging.info(
             cur.execute(
-                f"DELETE FROM tblDimEmailCity WHERE email='{i_email}' AND city_id={i_city_id}"
+                "DELETE FROM tblDimEmailCity WHERE email=%s AND city_id=%s",
+                (i_email, i_city_id),
             )
         )
 
@@ -180,23 +180,21 @@ def klaviyo_weather_app_post():
             )
         )
         mysql.connection.commit()
-        cur.close()
     except Exception as error:
         error_message = str("Caught this error: " + repr(error))
         if error_message.count("Duplicate entry") > 0:
             return str(
-                "Existing subscription found for %s and location %s" % (i_email, i_city)
+                "Existing subscription found for %s and location %s"
+                % (i_email, i_city_name)
             )
         else:
             return error_message
+    finally:
+        cur.close()
     return str(
         "SUCCESS! email: %s is now subscribed to weather powered emails for %s for 10 days"
         % (i_email, i_city_name)
     )
-
-
-
-
 
 
 if __name__ == "__main__":
