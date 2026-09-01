@@ -6,6 +6,7 @@ This repository is a Flask website intended to run behind Nginx on a DigitalOcea
 
 - Nginx receives public HTTP/HTTPS traffic and serves `/static/*` files directly.
 - Gunicorn runs the Flask app through `wsgi.py`.
+- Redis stores shared rate-limit counters for all Gunicorn workers.
 - Flask renders the Jinja templates in `templates/` and handles the database-backed routes.
 - MySQL stores the rain history and Klaviyo weather-email subscription data.
 
@@ -28,6 +29,17 @@ This repository is a Flask website intended to run behind Nginx on a DigitalOcea
 - `deploy/myproject.service`: Example systemd service for Gunicorn.
 - `deploy/nginx-site.conf`: Example Nginx server block.
 
+## Rate Limiting
+
+Nginx is the only trusted proxy in front of Flask. Werkzeug's `ProxyFix` uses the
+client address and scheme forwarded by that one proxy. Flask-Limiter stores its
+counters in Redis so all Gunicorn workers enforce the same limits.
+
+Only the database-backed `POST /rain` and `POST /klaviyo` routes are limited.
+Each route allows 50 requests per client IP per hour and 500 per day. Public GET
+pages are not subject to these application-level limits. Limited responses include
+rate-limit headers and a `Retry-After` header when a client receives a 429.
+
 ## Local Setup
 
 ```bash
@@ -39,6 +51,9 @@ cp local_settings.example.py local_settings.py
 ```
 
 Edit `local_settings.py` with the MySQL host, user, password, and real Klaviyo city mappings. The app imports this file on startup.
+
+Start a local Redis server before running the app. The default storage URL is
+`redis://127.0.0.1:6379/0`; set `RATELIMIT_STORAGE_URI` to override it.
 
 To run the app locally after MySQL is reachable:
 
@@ -54,8 +69,22 @@ These commands assume Ubuntu on a Droplet, a deploy user named `deploy`, and an 
 
 ```bash
 sudo apt update
-sudo apt install -y nginx git python3-venv python3-dev build-essential default-libmysqlclient-dev pkg-config
+sudo apt install -y nginx redis-server git python3-venv python3-dev build-essential default-libmysqlclient-dev pkg-config
 ```
+
+Enable Redis and confirm it is healthy:
+
+```bash
+sudo systemctl enable --now redis-server
+redis-cli ping
+sudo redis-cli CONFIG GET bind
+sudo redis-cli CONFIG GET protected-mode
+```
+
+`redis-cli ping` must return `PONG`. Keep Redis bound to loopback with protected
+mode enabled, and do not open port 6379 in UFW or a DigitalOcean Cloud Firewall.
+The application service connects through `127.0.0.1`, so Redis does not need to
+accept public traffic.
 
 2. Create the deploy location:
 
@@ -88,6 +117,11 @@ sudo systemctl enable --now myproject
 sudo systemctl status myproject
 ```
 
+The service requires `redis-server.service` and sets
+`RATELIMIT_STORAGE_URI=redis://127.0.0.1:6379/0`. Flask-Limiter intentionally has
+no in-memory production fallback: if Redis is unavailable, limited POST routes
+fail instead of silently bypassing or inconsistently enforcing their limits.
+
 6. Install the Nginx site:
 
 ```bash
@@ -118,7 +152,23 @@ DigitalOcean's Flask deployment guide also uses Gunicorn behind Nginx, with syst
 - App logs: `sudo journalctl -u myproject -f`
 - Flask file log: `/srv/digitalOcean/logs/myproject.log`
 - Nginx errors: `sudo tail -f /var/log/nginx/digitalOcean.error.log`
+- Redis health: `redis-cli ping`
+- Redis logs: `sudo journalctl -u redis-server -f`
 - Nginx config check: `sudo nginx -t`
 - Restart after code changes: `sudo systemctl restart myproject`
 
 If Nginx returns `502 Bad Gateway`, check that `myproject` is running and that `/run/myproject/myproject.sock` exists.
+
+If limited POST routes fail, check Redis before restarting the application:
+
+```bash
+sudo systemctl status redis-server
+redis-cli ping
+sudo systemctl restart redis-server
+sudo systemctl restart myproject
+```
+
+To roll back this release, deploy the previous application commit, reinstall its
+requirements, restore its systemd unit, run `sudo systemctl daemon-reload`, and
+restart `myproject`. Do not disable or uninstall Redis until the previous unit is
+active and no longer declares `redis-server.service` as a requirement.
