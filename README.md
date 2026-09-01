@@ -1,174 +1,283 @@
 # digitalOcean Flask Site
 
-This repository is a Flask website intended to run behind Nginx on a DigitalOcean Droplet.
+Flask portfolio and weather applications deployed on one Ubuntu DigitalOcean
+Droplet. The production stack deliberately stays small:
 
-## What Serves What
+- Nginx terminates HTTP/HTTPS and serves `/static/*`.
+- Gunicorn runs the Flask WSGI application behind a Unix socket.
+- Redis stores rate-limit counters shared by all Gunicorn workers.
+- MySQL stores rain history and email subscriptions.
+- systemd starts, supervises, and logs the application and Redis services.
 
-- Nginx receives public HTTP/HTTPS traffic and serves `/static/*` files directly.
-- Gunicorn runs the Flask app through `wsgi.py`.
-- Redis stores shared rate-limit counters for all Gunicorn workers.
-- Flask renders the Jinja templates in `templates/` and handles the database-backed routes.
-- MySQL stores the rain history and Klaviyo weather-email subscription data.
+This deployment does not need Docker, Kubernetes, Node.js, or a separate process
+manager. Ubuntu packages manage Nginx and Redis; a Python virtual environment
+isolates application dependencies.
 
-## Routes
+## Application behavior
 
-- `/` renders the portfolio homepage from `templates/index.html`.
-- `/old` renders the older portfolio page from `templates/index_old.html`.
-- `/research` renders `templates/research.html`, which links to PDFs under `static/research/`.
-- `/rain` reads locations from `initialize_mysql_rain.py` and rainfall data from `rain.tblFactLatLon`.
-- `/klaviyo` validates an email address and inserts a subscription into `klaviyo.tblDimEmailCity`.
+- `/`, `/old`, and `/research` render portfolio content.
+- `GET /rain` and `GET /klaviyo` render forms.
+- `POST /rain` reads rainfall history from MySQL.
+- `POST /klaviyo` validates and stores a subscription in MySQL.
 
-## Important Files
+Only the two POST routes are rate limited. Each allows 50 requests per client IP
+per hour and 500 per day. Nginx is the single trusted proxy, and Redis makes the
+counters consistent across the three Gunicorn workers. Public GET routes are not
+subject to these application-level limits.
 
-- `myproject.py`: Flask app, route handlers, database connections, and rate limiting.
-- `wsgi.py`: WSGI entrypoint used by Gunicorn.
-- `initialize_mysql_rain.py`: Rain location list plus schema setup for `rain.tblFactLatLon`.
-- `local_settings.py`: Local secrets and city mappings. This file is required at runtime and intentionally ignored by git.
-- `local_settings.example.py`: Copy this to `local_settings.py` and replace the placeholder values.
-- `requirements.txt`: Python packages needed by the app.
-- `deploy/myproject.service`: Example systemd service for Gunicorn.
-- `deploy/nginx-site.conf`: Example Nginx server block.
+## Important files
 
-## Rate Limiting
+- `myproject.py`: Flask routes, database clients, and Redis-backed rate limiting.
+- `wsgi.py`: Gunicorn entrypoint.
+- `local_settings.example.py`: tracked template for the required, ignored
+  `local_settings.py` city mappings.
+- `requirements.txt`: Python runtime dependencies.
+- `deploy/myproject.env.example`: production environment template.
+- `deploy/myproject.service`: systemd unit for Gunicorn.
+- `deploy/nginx-site.conf`: initial Nginx server block.
 
-Nginx is the only trusted proxy in front of Flask. Werkzeug's `ProxyFix` uses the
-client address and scheme forwarded by that one proxy. Flask-Limiter stores its
-counters in Redis so all Gunicorn workers enforce the same limits.
+## Local development
 
-Only the database-backed `POST /rain` and `POST /klaviyo` routes are limited.
-Each route allows 50 requests per client IP per hour and 500 per day. Public GET
-pages are not subject to these application-level limits. Limited responses include
-rate-limit headers and a `Retry-After` header when a client receives a 429.
-
-## Local Setup
+MySQL and Redis must be reachable before importing the application. By default,
+Redis is expected at `redis://127.0.0.1:6379/0`.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip wheel
-pip install -r requirements.txt
+python -m pip install --upgrade pip wheel
+python -m pip install -r requirements.txt
 cp local_settings.example.py local_settings.py
-```
-
-Edit `local_settings.py` with the MySQL host, user, password, and real Klaviyo city mappings. The app imports this file on startup.
-
-Start a local Redis server before running the app. The default storage URL is
-`redis://127.0.0.1:6379/0`; set `RATELIMIT_STORAGE_URI` to override it.
-
-To run the app locally after MySQL is reachable:
-
-```bash
 gunicorn --bind 127.0.0.1:5000 wsgi:app
 ```
 
-## DigitalOcean Droplet Deployment
+Edit `local_settings.py` with the real city mappings. Supply `MYSQL_HOST`,
+`MYSQL_USER`, and `MYSQL_PASSWORD` through the shell environment; do not commit
+credentials.
 
-These commands assume Ubuntu on a Droplet, a deploy user named `deploy`, and an install path of `/srv/digitalOcean`.
+## Production layout
 
-1. Install system packages:
+The checked-in service and Nginx files use these paths:
+
+| Purpose | Path or identity |
+| --- | --- |
+| Application user | `deploy` |
+| Repository | `/srv/digitalOcean` |
+| Virtual environment | `/srv/digitalOcean/.venv` |
+| Runtime configuration | `/etc/myproject/myproject.env` |
+| Gunicorn socket | `/run/myproject/myproject.sock` |
+| Application log | `/srv/digitalOcean/logs/myproject.log` |
+
+Do not run Gunicorn as root or point the service at a checkout under `/root`.
+If an administrative checkout already exists at `/root/digitalOcean`, leave it
+as a temporary staging copy and create the production checkout under `/srv`.
+
+## One-time Droplet provisioning
+
+These steps assume Ubuntu, working DNS, an existing MySQL service, and a sudo-capable
+administrator. Commands that own application files run as `deploy`.
+
+### 1. Install system packages
 
 ```bash
 sudo apt update
-sudo apt install -y nginx redis-server git python3-venv python3-dev build-essential default-libmysqlclient-dev pkg-config
+sudo apt install -y nginx redis-server git python3-venv python3-dev build-essential default-libmysqlclient-dev pkg-config python3-certbot-nginx
 ```
 
-Enable Redis and confirm it is healthy:
+### 2. Create the service account and application directory
+
+Skip `adduser` if the account already exists.
+
+```bash
+sudo adduser --disabled-password --gecos "" deploy
+sudo install -d -o deploy -g www-data -m 0750 /srv/digitalOcean
+```
+
+### 3. Give the service account read-only GitHub access
+
+For a private repository, create a dedicated SSH deploy key as `deploy`:
+
+```bash
+sudo -u deploy install -d -m 0700 /home/deploy/.ssh
+sudo -u deploy ssh-keygen -t ed25519 -C "digitalOcean production deploy key" -f /home/deploy/.ssh/github_digitalocean_deploy -N ""
+sudo cat /home/deploy/.ssh/github_digitalocean_deploy.pub
+```
+
+Add the public key in GitHub under **Repository settings → Deploy keys** and leave
+write access disabled. Create `/home/deploy/.ssh/config` with:
+
+```sshconfig
+Host github-digitalocean
+    HostName github.com
+    User git
+    IdentityFile /home/deploy/.ssh/github_digitalocean_deploy
+    IdentitiesOnly yes
+```
+
+Then secure and test it:
+
+```bash
+sudo chown deploy:deploy /home/deploy/.ssh/config
+sudo chmod 0600 /home/deploy/.ssh/config
+sudo -u deploy ssh -T git@github-digitalocean
+```
+
+The successful GitHub message says shell access is unavailable; that is expected.
+Clone the production branch:
+
+```bash
+sudo -u deploy git clone --branch main git@github-digitalocean:eric-r-xu/digitalOcean.git /srv/digitalOcean
+```
+
+### 4. Configure application secrets and mappings
+
+Keep database credentials outside the checkout:
+
+```bash
+cd /srv/digitalOcean
+sudo install -d -o root -g root -m 0755 /etc/myproject
+sudo install -o root -g root -m 0600 deploy/myproject.env.example /etc/myproject/myproject.env
+sudoedit /etc/myproject/myproject.env
+sudo -u deploy cp local_settings.example.py local_settings.py
+sudo -u deploy chmod 0600 local_settings.py
+sudo -u deploy nano local_settings.py
+```
+
+Set the real MySQL credentials in `/etc/myproject/myproject.env` and the real city
+mappings in `local_settings.py`. The MySQL user must be able to use the `rain` and
+`klaviyo` databases. Importing the application creates `rain.tblFactLatLon` if it
+does not exist; the Klaviyo city and subscription tables must already exist.
+
+### 5. Install Python dependencies
+
+```bash
+cd /srv/digitalOcean
+sudo -u deploy python3 -m venv .venv
+sudo -u deploy .venv/bin/python -m pip install --upgrade pip wheel
+sudo -u deploy .venv/bin/python -m pip install -r requirements.txt
+sudo -u deploy .venv/bin/python -m pip check
+```
+
+### 6. Start and secure Redis
 
 ```bash
 sudo systemctl enable --now redis-server
 redis-cli ping
 sudo redis-cli CONFIG GET bind
 sudo redis-cli CONFIG GET protected-mode
+sudo ss -ltnp | grep ':6379'
 ```
 
-`redis-cli ping` must return `PONG`. Keep Redis bound to loopback with protected
-mode enabled, and do not open port 6379 in UFW or a DigitalOcean Cloud Firewall.
-The application service connects through `127.0.0.1`, so Redis does not need to
-accept public traffic.
+Required results:
 
-2. Create the deploy location:
+- `redis-cli ping` returns `PONG`.
+- Protected mode is `yes`.
+- Redis listens only on `127.0.0.1` and optionally `::1`.
+- Port 6379 is not allowed through UFW or a DigitalOcean Cloud Firewall.
 
-```bash
-sudo adduser deploy
-sudo mkdir -p /srv/digitalOcean
-sudo chown deploy:www-data /srv/digitalOcean
-sudo chmod 775 /srv/digitalOcean
-```
-
-3. Put this repository at `/srv/digitalOcean`, then install Python dependencies:
+### 7. Install the application service
 
 ```bash
 cd /srv/digitalOcean
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip wheel
-pip install -r requirements.txt
-cp local_settings.example.py local_settings.py
-```
-
-4. Edit `local_settings.py`. Confirm the MySQL user can access the `rain` and `klaviyo` databases. `initialize_mysql_rain.py` creates `rain.tblFactLatLon` when the app imports, but the Klaviyo city/subscription tables must already exist.
-
-5. Install and start the Gunicorn systemd service:
-
-```bash
-sudo cp deploy/myproject.service /etc/systemd/system/myproject.service
+sudo install -m 0644 deploy/myproject.service /etc/systemd/system/myproject.service
+sudo systemd-analyze verify /etc/systemd/system/myproject.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now myproject
-sudo systemctl status myproject
+sudo systemctl --no-pager --full status myproject
 ```
 
-The service requires `redis-server.service` and sets
-`RATELIMIT_STORAGE_URI=redis://127.0.0.1:6379/0`. Flask-Limiter intentionally has
-no in-memory production fallback: if Redis is unavailable, limited POST routes
-fail instead of silently bypassing or inconsistently enforcing their limits.
+The service requires Redis and intentionally has no in-memory production fallback.
+If Redis is unavailable, limited POST requests fail instead of bypassing protection
+or using inconsistent per-worker counters.
 
-6. Install the Nginx site:
+### 8. Configure Nginx and HTTPS
 
 ```bash
-sudo cp deploy/nginx-site.conf /etc/nginx/sites-available/digitalOcean
-sudo sed -i 's/app.example.com/YOUR_DOMAIN/g' /etc/nginx/sites-available/digitalOcean
+cd /srv/digitalOcean
+sudo install -m 0644 deploy/nginx-site.conf /etc/nginx/sites-available/digitalOcean
+sudoedit /etc/nginx/sites-available/digitalOcean
 sudo ln -s /etc/nginx/sites-available/digitalOcean /etc/nginx/sites-enabled/digitalOcean
 sudo nginx -t
 sudo systemctl reload nginx
-```
-
-7. Open the firewall for Nginx:
-
-```bash
 sudo ufw allow 'Nginx Full'
+sudo certbot --nginx -d app.ericrxu.com
 ```
 
-8. Add HTTPS after DNS points at the Droplet:
+Set the Nginx `server_name` before testing or running Certbot. The included Ubuntu
+`proxy_params` must forward `X-Forwarded-For` and `X-Forwarded-Proto`; `ProxyFix`
+trusts exactly this one Nginx hop.
+
+## Routine deployment
+
+Commit, review, and merge changes into `main` before deploying. On the Droplet,
+run Git and Python commands as `deploy` so the checkout never gains root-owned
+files:
 
 ```bash
-sudo apt install -y python3-certbot-nginx
-sudo certbot --nginx -d YOUR_DOMAIN
+cd /srv/digitalOcean
+sudo -u deploy git status --short
+sudo -u deploy git rev-parse HEAD
+sudo -u deploy git fetch origin main
+sudo -u deploy git merge --ff-only origin/main
+sudo -u deploy .venv/bin/python -m pip install -r requirements.txt
+sudo -u deploy .venv/bin/python -m pip check
+sudo -u deploy .venv/bin/python -m compileall -q myproject.py wsgi.py initialize_mysql_rain.py local_settings.py
+sudo install -m 0644 deploy/myproject.service /etc/systemd/system/myproject.service
+sudo systemd-analyze verify /etc/systemd/system/myproject.service
+sudo systemctl daemon-reload
+sudo systemctl restart myproject
+sudo systemctl --no-pager --full status myproject
 ```
 
-DigitalOcean's Flask deployment guide also uses Gunicorn behind Nginx, with systemd managing the app and Nginx proxying to a Unix socket: https://www.digitalocean.com/community/tutorials/how-to-serve-flask-applications-with-gunicorn-and-nginx-on-ubuntu-22-04
+Record the commit printed by `git rev-parse HEAD` before updating. An empty
+`git status --short` is required before the merge. Redis and Nginx do not need to
+restart during a normal application deployment.
 
-## Troubleshooting
+Do not overwrite `/etc/nginx/sites-available/digitalOcean` during routine releases:
+Certbot may have added the active TLS configuration there. Review and apply Nginx
+changes separately, followed by `sudo nginx -t` and a reload.
 
-- App logs: `sudo journalctl -u myproject -f`
-- Flask file log: `/srv/digitalOcean/logs/myproject.log`
-- Nginx errors: `sudo tail -f /var/log/nginx/digitalOcean.error.log`
-- Redis health: `redis-cli ping`
-- Redis logs: `sudo journalctl -u redis-server -f`
-- Nginx config check: `sudo nginx -t`
-- Restart after code changes: `sudo systemctl restart myproject`
+## Production verification
 
-If Nginx returns `502 Bad Gateway`, check that `myproject` is running and that `/run/myproject/myproject.sock` exists.
-
-If limited POST routes fail, check Redis before restarting the application:
+The public page should return 200 without rate-limit headers:
 
 ```bash
-sudo systemctl status redis-server
+curl -sS -D - -o /dev/null https://app.ericrxu.com/
+```
+
+A harmless invalid POST exercises the limiter without querying rain history:
+
+```bash
+curl -sS -D - -o /dev/null -X POST --data-urlencode 'i_location_name=__rate_limit_smoke_test__' https://app.ericrxu.com/rain
+redis-cli --scan --pattern 'LIMITS:*digitalocean*'
+```
+
+The POST response should include `X-RateLimit-Limit`,
+`X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After`. Do not generate
+51 production requests merely to test the 429 response.
+
+## Operations and recovery
+
+Useful checks:
+
+```bash
+sudo journalctl -u myproject -n 100 --no-pager
+sudo journalctl -u redis-server -n 100 --no-pager
+sudo tail -n 100 /var/log/nginx/digitalOcean.error.log
 redis-cli ping
+sudo nginx -t
+```
+
+If Nginx returns 502, verify that `myproject` is active and that
+`/run/myproject/myproject.sock` exists. If limited POST requests fail, check Redis
+before restarting the application:
+
+```bash
 sudo systemctl restart redis-server
+redis-cli ping
 sudo systemctl restart myproject
 ```
 
-To roll back this release, deploy the previous application commit, reinstall its
-requirements, restore its systemd unit, run `sudo systemctl daemon-reload`, and
-restart `myproject`. Do not disable or uninstall Redis until the previous unit is
-active and no longer declares `redis-server.service` as a requirement.
+For application rollback, revert the release commit through the normal Git review
+workflow, merge the revert into `main`, and run the routine deployment again. This
+preserves an auditable history and avoids destructive resets on the Droplet. Redis
+can remain installed during rollback.
