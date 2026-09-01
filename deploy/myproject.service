@@ -1,6 +1,7 @@
 [Unit]
 Description=Gunicorn service for the digitalOcean Flask site
-After=network.target
+After=network.target redis-server.service
+Requires=redis-server.service
 
 [Service]
 User=deploy
@@ -8,6 +9,7 @@ Group=www-data
 WorkingDirectory=/srv/digitalOcean
 Environment="PATH=/srv/digitalOcean/.venv/bin"
 Environment="MYPROJECT_LOG_FILE=/srv/digitalOcean/logs/myproject.log"
+Environment="RATELIMIT_STORAGE_URI=redis://127.0.0.1:6379/0"
 RuntimeDirectory=myproject
 RuntimeDirectoryMode=0755
 UMask=0007

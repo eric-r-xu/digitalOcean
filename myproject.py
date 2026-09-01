@@ -12,11 +12,13 @@ from flask_sqlalchemy import SQLAlchemy
 from pytz import timezone
 from validate_email import validate_email
 from validate_email.updater import update_builtin_blacklist
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from initialize_mysql_rain import lat_lon_dict, location_names
 from local_settings import MYSQL_AUTH, cityNameSet, city_name_to_id
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 app.config["MYSQL_HOST"] = MYSQL_AUTH["host"]
 app.config["MYSQL_USER"] = MYSQL_AUTH["user"]
@@ -49,7 +51,11 @@ logging.basicConfig(
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
-    default_limits=["500 per day", "50 per hour"],
+    storage_uri=os.environ.get(
+        "RATELIMIT_STORAGE_URI", "redis://127.0.0.1:6379/0"
+    ),
+    key_prefix="digitalocean",
+    headers_enabled=True,
 )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+mysqldb://%s:%s@%s/%s" % (
@@ -83,6 +89,7 @@ def rain_app():
 
 
 @app.route("/rain", methods=(["POST"]))
+@limiter.limit("50 per hour; 500 per day")
 def rain_gen_html_table():
     i_location_name = str(request.form["i_location_name"])
     if i_location_name not in lat_lon_dict:
@@ -150,6 +157,7 @@ def klaviyo_weather_app_html():
 
 
 @app.route("/klaviyo", methods=["POST"])
+@limiter.limit("50 per hour; 500 per day")
 def klaviyo_weather_app_post():
     i_email = str(request.form["i_email"]).lower()
     is_valid = validate_email(
