@@ -18,7 +18,14 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="TileSense — a touch-first tile-efficiency trainer.">
+
+  <!-- Without this, mobile Chrome lays the page out at a ~980px virtual width
+       and then scales it down, which made the canvas look cramped / off (mobile
+       Safari happens to default closer to device-width). Pin it to the device
+       and cover the display cutout. -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -31,6 +38,15 @@
 
   <title>TileSense</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #042020; /* matches kLetterboxColor so there's no flash */
+    }
+  </style>
 </head>
 <body>
   <!--
