@@ -1,5 +1,7 @@
 # digitalOcean Flask Site
 
+Live site: <https://app.ericrxu.com>
+
 Flask portfolio and weather applications deployed on one Ubuntu DigitalOcean
 Droplet. The production stack deliberately stays small:
 
@@ -70,6 +72,47 @@ The checked-in service and Nginx files use these paths:
 Do not run Gunicorn as root or point the service at a checkout under `/root`.
 If an administrative checkout already exists at `/root/digitalOcean`, leave it
 as a temporary staging copy and create the production checkout under `/srv`.
+
+## Quick redeploy
+
+Fast path for pushing an already-merged `main` to the live site
+(<https://app.ericrxu.com>). Run every Git and Python command as `deploy` so the
+checkout never gains root-owned files. See
+[Routine deployment](#routine-deployment) for the full checklist and
+[Operations and recovery](#operations-and-recovery) if a step fails.
+
+```bash
+cd /srv/digitalOcean
+sudo -u deploy git status --short                 # must be empty
+sudo -u deploy git fetch origin main
+sudo -u deploy git merge --ff-only origin/main
+sudo -u deploy .venv/bin/python -m pip install -r requirements.txt
+sudo systemctl restart myproject
+sudo systemctl --no-pager --full status myproject
+curl -sS -D - -o /dev/null https://app.ericrxu.com/   # expect HTTP/2 200
+```
+
+First deploy on a fresh checkout also needs the ignored local files, which are
+not in Git:
+
+```bash
+sudo -u deploy cp local_settings.example.py local_settings.py   # then edit city mappings
+sudo -u deploy mkdir -p logs
+sudo install -d -o root -g root -m 0755 /etc/myproject
+sudo install -o root -g root -m 0600 deploy/myproject.env.example /etc/myproject/myproject.env
+sudoedit /etc/myproject/myproject.env                           # set real MySQL credentials
+```
+
+Smoke-test the import exactly the way systemd will (root reads the env file,
+Gunicorn runs as `deploy`):
+
+```bash
+sudo systemd-run --pty --collect \
+  --uid=deploy --gid=www-data \
+  --working-directory=/srv/digitalOcean \
+  --property=EnvironmentFile=/etc/myproject/myproject.env \
+  /srv/digitalOcean/.venv/bin/python -c 'import wsgi; print("import OK")'
+```
 
 ## One-time Droplet provisioning
 
@@ -276,6 +319,40 @@ sudo systemctl restart redis-server
 redis-cli ping
 sudo systemctl restart myproject
 ```
+
+### Deploy-time failures
+
+- **`ssh: Could not resolve hostname github-digitalocean`** on `git fetch`.
+  The `origin` URL uses the `github-digitalocean` SSH alias, but the `deploy`
+  user has no matching `Host` block. Create `/home/deploy/.ssh/config` as shown
+  in [step 3](#3-give-the-service-account-read-only-github-access), or repoint
+  `origin` at the canonical SSH URL:
+
+  ```bash
+  sudo -u deploy git -C /srv/digitalOcean remote set-url origin git@github-digitalocean:eric-r-xu/digitalOcean.git
+  sudo -u deploy ssh -T git@github-digitalocean        # expect the GitHub greeting
+  ```
+
+- **`Password authentication is not supported`** / a username+password prompt on
+  `git fetch`. `origin` is an `https://github.com/...` URL. This repository is
+  private and GitHub removed password auth, so switch back to the deploy-key SSH
+  URL with the `remote set-url` command above.
+
+- **`/etc/myproject/myproject.env: Permission denied`** when sourcing the env
+  file as `deploy`. This is expected: the file is `0600 root:root` and systemd
+  reads it as root before dropping to `deploy`. Do not loosen the permissions.
+  Use the `systemd-run` smoke test in [Quick redeploy](#quick-redeploy) instead
+  of sourcing the file by hand.
+
+- **`ModuleNotFoundError: No module named 'local_settings'`** or a missing
+  `logs/` directory on import. Both are Git-ignored and must be created on the
+  Droplet:
+
+  ```bash
+  cd /srv/digitalOcean
+  sudo -u deploy cp local_settings.example.py local_settings.py
+  sudo -u deploy mkdir -p logs
+  ```
 
 For application rollback, revert the release commit through the normal Git review
 workflow, merge the revert into `main`, and run the routine deployment again. This
