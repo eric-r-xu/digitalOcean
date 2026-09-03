@@ -1,6 +1,7 @@
-# digitalOcean Flask Site
+# Digital Ocean
+### cloud IaaS provider for Eric Xu's live site: <https://app.ericrxu.com>
 
-Live site: <https://app.ericrxu.com>
+<img width="170" height="170" alt="image" src="https://github.com/user-attachments/assets/d537598b-1437-405a-831d-d145f4bb0162" />
 
 Flask portfolio and weather applications deployed on one Ubuntu DigitalOcean
 Droplet. The production stack deliberately stays small:
