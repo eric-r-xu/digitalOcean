@@ -3,10 +3,10 @@
     "short_name": "TileSense",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
+    "background_color": "#042020",
+    "theme_color": "#042020",
     "description": "A touch-first tile-efficiency trainer.",
-    "orientation": "portrait-primary",
+    "orientation": "landscape",
     "prefer_related_applications": false,
     "icons": [
         {
