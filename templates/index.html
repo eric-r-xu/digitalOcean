@@ -43,23 +43,61 @@
             margin-bottom: 40px;
             font-size: 13px;
             line-height: 1.5;
-	        text-align: center;
+            text-align: center;
             width: 100%;
         }
-        .education-list img {
-            font-size: 2px;
+        .intro-section {
+            box-sizing: border-box;
+            padding: 0 18px;
             text-align: left;
-            font-family: 'Arial Narrow', Arial, sans-serif;
-            display: flex;
-            justify-content: left;
-	    text-align: left;
-            width: 100px; 
-            height: 60px;
+        }
+        .intro-section h2 {
+            text-align: center;
+        }
+        .intro-section p {
+            margin: 0 0 1.2em;
+            text-indent: 2em;
+        }
+        .details-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 36px;
+            align-items: start;
+            margin-bottom: 40px;
+        }
+        .details-grid > .section,
+        .right-column > .section {
+            margin-bottom: 0;
         }
         .education-list {
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            align-items: stretch;
             font-family: 'Arial Narrow', Arial, sans-serif;
             font-size: 14px;
-	    text-align: left;
+        }
+        .education-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .education-item img {
+            box-sizing: border-box;
+            width: 60px;
+            height: 60px;
+            padding: 5px;
+            object-fit: contain;
+            background: #fff;
+        }
+        .education-item span {
+            line-height: 1.35;
+        }
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
         }
         .links {
             display: flex;
@@ -85,22 +123,27 @@
         footer {
             text-align: center;
             margin-top: 40px;
-            font-size: 25px;
-            font-family: 'Brush Script MT', cursive;
+            font-size: 20px;
+            line-height: 1.8;
+            font-family: 'SF Hello', 'SF Pro Display', -apple-system,
+                BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-style: normal;
         }
-
-.education-list {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.education-list p {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-}
+        @media (max-width: 700px) {
+            body {
+                padding: 20px;
+            }
+            .container {
+                padding: 18px;
+            }
+            .details-grid {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+            .intro-section {
+                padding: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -111,52 +154,41 @@
             <img src="/static/profile_image_2.png" alt="Profile Image 2">
 
         </div>
-        <div class="section">
+        <div class="section intro-section">
             <h2>🧠🌊 Brain Waves → 🔢🔬💻 Data Lakes</h2>
             <p>One of the most impactful lessons I learned in graduate school was from my professor, who told me, <i>"Let the data tell you the story."</i> At the time, I struggled to understand my experimental data, which diverged from my original hypothesis. He emphasized the importance of measurement controls and taking reviewer feedback seriously when drawing conclusions. I admired his dedication to data integrity and his willingness to publish unexpected results as long as they told a coherent story.</p>
             <p>Fast forward to today, data-driven decision-making has become the cornerstone of our society. I believe we all have a responsibility to ensure data proliferation is accompanied by proper data hygiene, including deduplication, effective control measures, and unbiased analysis. Realizing I could make a broader impact, I transitioned into data science, completing a program with Kaplan's Metis. Since 2015, a year after earning my Ph.D. in Cognitive Neuroscience from Dartmouth College in Psychological and Brain Sciences, I've been working in the tech industry. I have over eight years of experience developing sound big data measurement solutions with diverse teams in software engineering, sales, law, and safety teams. I enjoy diverse ideas and collaboration to achieve better results 🤜🤛👨‍👩‍👧‍👦.</p>
             <p>I'm passionate about technology, automation, data semantics/lineage/ontology, gaming, and using data to reduce bias and enhance learning and fun to make better decisions. In November 2024, I completed a a 12-week Data Science and ML course from the <a href="https://idss-gl.mit.edu/mit-idss-data-science-machine-learning-program">MIT Institute for Data, Systems, and Society (IDSS)</a> where I gained hands on case study experience using the latest effective machine learning techniques to solve common industry challenges.  In August 2025, I completed a <a href="https://prolearn.mit.edu/professional-certificate-game-design-0">6-month MIT xPRO Game Design program </a> because I wanted to understand the gaming industry from academics in the industry. My project is building a <a href="https://en.wikipedia.org/wiki/Mahjong">Mahjong</a> training app to help users get better using guided calculations.</p>
         </div>
-        <div class="section">
+        <div class="details-grid">
+        <section class="section education-panel">
             <h2>Education</h2>
-            <div class="section">
-                    <a href="https://prolearn.mit.edu/professional-certificate-game-design-0">
+            <div class="education-list">
+                    <a class="education-item" href="https://prolearn.mit.edu/professional-certificate-game-design-0">
                         <img src="/static/logo_mit_xpro.png" alt="MIT xPRO" class="bordered-image">
-                        <p>MIT xPRO, Game Design, Feb 2025 - August 2025</p>
+                        <span>MIT xPRO, Game Design, Feb 2025 - August 2025</span>
                     </a>
-                    <br>
-        </div>
-            	<div class="section">
-                    <a href="https://idss-gl.mit.edu/mit-idss-data-science-machine-learning-program">
+                    <a class="education-item" href="https://idss-gl.mit.edu/mit-idss-data-science-machine-learning-program">
                         <img src="/static/logo_mit_idss.png" alt="MIT IDSS logo" class="bordered-image">
-                        <p>MIT IDSS, Data Science and ML Program, June 2024 - November 2024</p>
+                        <span>MIT IDSS, Data Science and ML Program, June 2024 - November 2024</span>
                     </a>
-                    <br>
-		</div>
-		<div class="section">
-		    <a href="https://github.com/datascopeanalytics/metis-data-science-bootcamp-prework">
+                    <a class="education-item" href="https://github.com/datascopeanalytics/metis-data-science-bootcamp-prework">
                         <img src="/static/logo_metis_kaplan.png" alt="Metis Kaplan Logo" class="bordered-image">
-                        <p>Kaplan Metis, Data Science 480 hour Certification, 2014</p>
+                        <span>Kaplan Metis, Data Science 480 hour Certification, 2014</span>
                     </a>
-                    <br>
-		</div>
-		<div class="section">
-                    <a href="https://pbs.dartmouth.edu/">
+                    <a class="education-item" href="https://pbs.dartmouth.edu/">
                         <img src="/static/logo_dartmouth.png" alt="Dartmouth logo" class="bordered-image">
-                        <p>Dartmouth College, Ph.D. Psychological and Brain Sciences, 2014</p>
+                        <span>Dartmouth College, Ph.D. Psychological and Brain Sciences, 2014</span>
                     </a>
-                    <br>
-		</div>
-		<div class="section">
-		    <a href="https://case.edu/bme/research/biomechanics">
+                    <a class="education-item" href="https://case.edu/bme/research/biomechanics">
                         <img src="/static/logo_case.png" alt="Case logo" class="bordered-image">
-                        <p>Case Western Reserve University, B.S. Biomedical Engineering, concentration: Biomechanics</p>
+                        <span>Case Western Reserve University, B.S. Biomedical Engineering, concentration: Biomechanics</span>
                     </a>
-                    <br>
-		</div>
-        </div>
-        <div class="section">
-            <h2>Portfolio & Links</h2>
+            </div>
+        </section>
+        <div class="right-column">
+        <section class="section">
+            <h2>Portfolio &amp; Links</h2>
             <div class="links">
                 <div class="link-item">
                     <a href="https://app.ericrxu.com/static/Resume-Eric-Xu.pdf">
@@ -181,7 +213,7 @@
                         <img src="/static/github-icon.png" alt="GitHub" class="bordered-image">
                         <div>GitHub</div>
                     </a>
-                </div><br>
+                </div>
                 <div class="link-item">
                     <a href="https://app.ericrxu.com/research">
                         <img src="/static/research-icon.jpg" alt="Research Papers and Scientific Posters" class="bordered-image">
@@ -205,7 +237,7 @@
                         <img src="/static/weather_email.png" alt="Weather-Based Email Service" class="bordered-image">
                         <div>WeatherEmail</div>
                     </a>
-                </div><br>
+                </div>
                 <div class="link-item">
                     <a href="https://github.com/eric-r-xu/TileSense">
                         <img src="/static/mahjong.png" alt="TileSense" class="bordered-image">
@@ -213,19 +245,21 @@
                     </a>
                 </div>
             </div>
-        </div>
+        </section>
         <div class="contact">
             <h2>Contact</h2>
             <p>eric.r.xu@gmail.com</p>
             <div class="link-item">
-                    <a href="https://linktr.ee/EricRXu">
-                        <img src="/static/link_tree_logo.png" alt="Linktr.ee" class="bordered-image">
-                        <div>linktr.ee</div>
-                    </a>
-                </div>
+                <a href="https://linktr.ee/EricRXu">
+                    <img src="/static/link_tree_logo.png" alt="Linktr.ee" class="bordered-image">
+                    <div>linktr.ee</div>
+                </a>
+            </div>
+        </div>
+        </div>
         </div>
         <footer>
-            <i>🇧🇿🇬🇧🇦🇺 Thank you for stopping by! 🇺🇸🇮🇪🇨🇦<br><br>🇨🇳🇭🇰 感谢您的光临! 🇹🇼🇸🇬 </i>
+            🇧🇿🇬🇧🇦🇺 Thank you for stopping by! 🇺🇸🇮🇪🇨🇦<br><br>🇨🇳🇭🇰 感谢您的光临! 🇹🇼🇸🇬
         </footer>
     </div>
 </body>
