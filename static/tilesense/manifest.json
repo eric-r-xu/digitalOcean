@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#042020",
     "theme_color": "#042020",
-    "description": "A touch-first tile-efficiency trainer.",
+    "description": "Japanese Mahjong Trainer",
     "orientation": "landscape",
     "prefer_related_applications": false,
     "icons": [
