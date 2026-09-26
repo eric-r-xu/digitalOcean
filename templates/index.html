@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Eric R. Xu, Ph.D.</title>
     <style>
         body {
@@ -79,11 +80,13 @@
         }
         .education-item {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
+            text-align: left;
         }
         .education-item img {
+            flex-shrink: 0;
             box-sizing: border-box;
             width: 60px;
             height: 60px;
@@ -239,14 +242,8 @@
                     </a>
                 </div>
                 <div class="link-item">
-                    <a href="https://github.com/eric-r-xu/TileSense">
-                        <img src="/static/mahjong.png" alt="TileSense" class="bordered-image">
-                        <div>TileSense</div>
-                    </a>
-                </div>
-                <div class="link-item">
                     <a href="https://app.ericrxu.com/tilesense/">
-                        <img src="/static/tilesense/assets/assets/prairielotl.png" alt="TileSense" class="bordered-image">
+                        <img src="/static/prairielotl.png" alt="TileSense" class="bordered-image">
                         <div>TileSense</div>
                     </a>
                 </div>
