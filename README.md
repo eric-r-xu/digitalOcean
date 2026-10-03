@@ -38,6 +38,8 @@ subject to these application-level limits.
 - `deploy/myproject.env.example`: production environment template.
 - `deploy/myproject.service`: systemd unit for Gunicorn.
 - `deploy/nginx-site.conf`: initial Nginx server block.
+- `deploy/ci-deploy.sh`: deploy script run on the Droplet by GitHub Actions.
+- `.github/workflows/ci-cd.yml`: CI checks on PRs and automatic deploys from `main`.
 
 ## Local development
 
@@ -74,7 +76,83 @@ Do not run Gunicorn as root or point the service at a checkout under `/root`.
 If an administrative checkout already exists at `/root/digitalOcean`, leave it
 as a temporary staging copy and create the production checkout under `/srv`.
 
+## Automated deployment (GitHub Actions)
+
+`.github/workflows/ci-cd.yml` runs on every pull request to `main` and every push
+to `main`:
+
+- **check**: installs `requirements.txt`, runs `pip check`, `ruff` (errors only),
+  and `compileall`. CI cannot import the app because that needs
+  `local_settings.py`, MySQL, and Redis.
+- **deploy** (pushes to `main` and manual runs only): SSHes to the Droplet as
+  `deploy` with a key that can only run `/usr/local/bin/myproject-ci-deploy`
+  (installed from `deploy/ci-deploy.sh`). The script fast-forwards to
+  `origin/main`, installs dependencies, restarts `myproject`, and health-checks
+  the Gunicorn socket. The workflow then checks <https://app.ericrxu.com/>.
+
+To redeploy without a new commit, use **Actions → CI/CD → Run workflow** on
+`main`.
+
+CI never reinstalls `deploy/myproject.service` or the Nginx site. Apply those
+changes by hand as described in [Routine deployment](#routine-deployment), so a
+push to `main` cannot write files that run as root.
+
+### One-time setup
+
+1. On your own machine, generate a dedicated key pair:
+
+   ```bash
+   ssh-keygen -t ed25519 -f gha_deploy -N "" -C "github-actions deploy"
+   ```
+
+2. On the Droplet, install the deploy script outside the checkout, so a merge
+   cannot rewrite it while it runs:
+
+   ```bash
+   cd /srv/digitalOcean
+   sudo install -o root -g root -m 0755 deploy/ci-deploy.sh /usr/local/bin/myproject-ci-deploy
+   ```
+
+   Reinstall it the same way whenever `deploy/ci-deploy.sh` changes.
+
+3. Allow the script to restart the service, and nothing else:
+
+   ```bash
+   sudo visudo -f /etc/sudoers.d/myproject-deploy
+   ```
+
+   ```
+   deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart myproject, /usr/bin/systemctl --no-pager --full status myproject
+   ```
+
+4. Authorize the key for `deploy`, locked to the forced command. Append one line
+   to `/home/deploy/.ssh/authorized_keys` (owned by `deploy`, mode `0600`),
+   pasting the contents of `gha_deploy.pub` after the options:
+
+   ```
+   restrict,command="/usr/local/bin/myproject-ci-deploy" ssh-ed25519 AAAA... github-actions deploy
+   ```
+
+5. In GitHub, go to **Settings → Secrets and variables → Actions** and add:
+
+   | Secret | Value |
+   | --- | --- |
+   | `DEPLOY_HOST` | Droplet IP address or hostname |
+   | `DEPLOY_SSH_KEY` | Contents of the private key `gha_deploy` |
+   | `DEPLOY_KNOWN_HOSTS` | Output of `ssh-keyscan -t ed25519 <host>`, checked against the host key fingerprint shown in the Droplet console |
+
+6. Optional but recommended: under **Settings → Environments → production**,
+   restrict deployments to the `main` branch. Under **Settings → Branches**,
+   require a pull request and the `check` job before merging to `main`.
+
+7. Test from your machine (`ssh -i gha_deploy deploy@<host> <40-char-sha>`
+   should run a deploy and nothing else), then delete the local private key.
+
 ## Quick redeploy
+
+Merges to `main` deploy automatically (see
+[Automated deployment](#automated-deployment-github-actions)). Use these steps
+as the manual fallback.
 
 Fast path for pushing an already-merged `main` to the live site
 (<https://app.ericrxu.com>). Run every Git and Python command as `deploy` so the
